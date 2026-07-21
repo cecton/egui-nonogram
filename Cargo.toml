@@ -1,6 +1,6 @@
 [package]
 name = "egui-nonogram"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 rust-version = "1.80"
 description = "A nonogram (picross) puzzle game library for egui"
