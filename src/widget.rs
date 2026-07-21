@@ -2,10 +2,10 @@
 
 use egui::{
     emath::GuiRounding, Align2, Color32, CornerRadius, FontId, PointerButton, Pos2, Rect, Response,
-    Sense, Stroke, StrokeKind, Ui, Vec2, Visuals, Widget,
+    Sense, Stroke, StrokeKind, TextStyle, Ui, Vec2, Visuals, Widget,
 };
 
-use crate::game::{CellState, NonogramGame};
+use crate::game::{CellState, GameStatus, NonogramGame};
 
 /// Which action a plain (primary) tap performs. Desktop users always have
 /// both actions available (left-click fills, right-click crosses); this
@@ -64,6 +64,7 @@ pub struct NonogramWidget<'a> {
     cell_size: Option<f32>,
     tap_mode: TapMode,
     show_preview: bool,
+    win_message: Option<String>,
 }
 
 impl<'a> NonogramWidget<'a> {
@@ -73,6 +74,7 @@ impl<'a> NonogramWidget<'a> {
             cell_size: None,
             tap_mode: TapMode::Fill,
             show_preview: false,
+            win_message: None,
         }
     }
 
@@ -97,6 +99,13 @@ impl<'a> NonogramWidget<'a> {
     /// it can't spoil a picture puzzle's solution. Defaults to `false`.
     pub fn show_preview(mut self, enabled: bool) -> Self {
         self.show_preview = enabled;
+        self
+    }
+
+    /// Message shown in the win banner drawn over the board once
+    /// [`GameStatus::Won`] is reached. Defaults to `"Solved!"` when not set.
+    pub fn win_message(mut self, message: impl Into<String>) -> Self {
+        self.win_message = Some(message.into());
         self
     }
 }
@@ -299,6 +308,26 @@ impl Widget for NonogramWidget<'_> {
                 CornerRadius::ZERO,
                 Stroke::new(1.0, visuals.widgets.noninteractive.bg_stroke.color),
                 StrokeKind::Outside,
+            );
+        }
+
+        // Win banner: drawn last so it sits on top, sized to the board
+        // itself (excludes the clue gutters and the preview column) so it
+        // never covers the picture preview.
+        if game.status == GameStatus::Won {
+            let board_rect = Rect::from_min_size(origin, board_size);
+            let banner_size = Vec2::new(
+                (board_size.x - 20.0).max(20.0),
+                64.0_f32.min(board_size.y - 4.0).max(20.0),
+            );
+            let banner = Rect::from_center_size(board_rect.center(), banner_size);
+            painter.rect_filled(banner, 8.0, Color32::from_black_alpha(170));
+            painter.text(
+                banner.center(),
+                Align2::CENTER_CENTER,
+                self.win_message.as_deref().unwrap_or("Solved!"),
+                TextStyle::Heading.resolve(ui.style()),
+                Color32::from_rgb(170, 240, 170),
             );
         }
 
