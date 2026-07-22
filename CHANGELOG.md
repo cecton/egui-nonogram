@@ -7,10 +7,18 @@ Versioning](semver).
 
 ## [Unreleased]
 
-## [0.1.2] - 2026-07-22
+## [0.1.3] - 2026-07-22
+
+### Added
+
+- `NonogramGame` now automatically crosses out remaining cells of a row or column once its filled cells match the clue — applied reactively on every player move, and also on construction/reset for all-empty lines
+- `NonogramWidget::interactive` builder flag to render the board read-only without dimming
+- `content_size` public helper function to pre-compute the widget's total footprint
+- Mobile/narrow-mode layout for the web demo: bottom action bar with Pan/Fill/Cross mode toggle, pannable/zoomable board, and hamburger menu for preset selection, new game, and theme
 
 ### Fixed
 
+- Win condition now checks against clues via `row_satisfied`/`col_satisfied` instead of the stored solution grid, so alternate valid arrangements also trigger a win
 - Web demo no longer shows the same initial board on every page load: seed is now random instead of hardcoded
 
 ## [0.1.1] - 2026-07-21
@@ -39,7 +47,7 @@ Versioning](semver).
 
 [keep_a_changelog]: https://keepachangelog.com/en/1.1.0
 [semver]: https://semver.org/spec/v2.0.0.html
-[Unreleased]: https://github.com/cecton/egui-nonogram/compare/v0.1.2...HEAD
-[0.1.2]: https://github.com/cecton/egui-nonogram/releases/tag/v0.1.2
+[Unreleased]: https://github.com/cecton/egui-nonogram/compare/v0.1.3...HEAD
+[0.1.3]: https://github.com/cecton/egui-nonogram/releases/tag/v0.1.3
 [0.1.1]: https://github.com/cecton/egui-nonogram/releases/tag/v0.1.1
 [0.1.0]: https://github.com/cecton/egui-nonogram/releases/tag/v0.1.0
