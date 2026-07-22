@@ -113,7 +113,7 @@ impl NonogramGame {
                 Self::line_clue(&col)
             })
             .collect();
-        Self {
+        let mut game = Self {
             width,
             height,
             solution,
@@ -123,7 +123,9 @@ impl NonogramGame {
             status: GameStatus::Playing,
             undo_stack: Vec::new(),
             redo_stack: Vec::new(),
-        }
+        };
+        game.cross_out_empty_lines();
+        game
     }
 
     /// Clear the player's grid and undo/redo history, keeping the same
@@ -134,6 +136,7 @@ impl NonogramGame {
         self.status = GameStatus::Playing;
         self.undo_stack.clear();
         self.redo_stack.clear();
+        self.cross_out_empty_lines();
     }
 
     #[inline]
@@ -195,7 +198,55 @@ impl NonogramGame {
         self.undo_stack.push(self.cells.clone());
         self.redo_stack.clear();
         self.cells[idx] = new_state;
+        self.auto_cross_completed_lines(x, y);
         self.check_win();
+    }
+
+    /// Cross out the remaining `Empty` cells of row `y` and column `x` if
+    /// that line's filled cells already match its clue: once satisfied, no
+    /// other cell in the line can ever be filled without breaking the
+    /// match, so the rest are surely empty. Only the line containing the
+    /// just-changed cell can have changed satisfaction.
+    fn auto_cross_completed_lines(&mut self, x: usize, y: usize) {
+        self.cross_row_if_satisfied(y);
+        self.cross_col_if_satisfied(x);
+    }
+
+    /// Cross out every row/column whose clue is `[0]`: on an all-`Empty`
+    /// grid, those lines are already satisfied, but [`Self::set_cell`]'s
+    /// reactive auto-crossing never runs on them since nothing ever
+    /// mutates a cell in an already-solved empty line. Called once at
+    /// construction and on [`Self::reset`] to keep the board consistent
+    /// with the clue dimming, which uses the same satisfaction check.
+    fn cross_out_empty_lines(&mut self) {
+        for y in 0..self.height {
+            self.cross_row_if_satisfied(y);
+        }
+        for x in 0..self.width {
+            self.cross_col_if_satisfied(x);
+        }
+    }
+
+    fn cross_row_if_satisfied(&mut self, y: usize) {
+        if self.row_satisfied(y) {
+            for x in 0..self.width {
+                let idx = self.idx(x, y);
+                if self.cells[idx] == CellState::Empty {
+                    self.cells[idx] = CellState::Crossed;
+                }
+            }
+        }
+    }
+
+    fn cross_col_if_satisfied(&mut self, x: usize) {
+        if self.col_satisfied(x) {
+            for y in 0..self.height {
+                let idx = self.idx(x, y);
+                if self.cells[idx] == CellState::Empty {
+                    self.cells[idx] = CellState::Crossed;
+                }
+            }
+        }
     }
 
     /// Whether row `y`'s currently-filled cells already match its clue. Used
@@ -332,6 +383,79 @@ mod tests {
     }
 
     #[test]
+    fn completing_a_row_auto_crosses_its_remaining_cells() {
+        let grid = vec![vec![true, true, false], vec![false, false, true]];
+        let mut game = NonogramGame::from_grid(grid);
+        game.toggle_fill(0, 0);
+        assert_eq!(game.cells[game.idx(2, 0)], CellState::Empty);
+        game.toggle_fill(1, 0);
+        assert!(game.row_satisfied(0));
+        assert_eq!(game.cells[game.idx(2, 0)], CellState::Crossed);
+    }
+
+    #[test]
+    fn completing_a_column_auto_crosses_its_remaining_cells() {
+        let grid = vec![vec![true, false], vec![true, false], vec![false, true]];
+        let mut game = NonogramGame::from_grid(grid);
+        game.toggle_fill(0, 0);
+        assert_eq!(game.cells[game.idx(0, 2)], CellState::Empty);
+        game.toggle_fill(0, 1);
+        assert!(game.col_satisfied(0));
+        assert_eq!(game.cells[game.idx(0, 2)], CellState::Crossed);
+    }
+
+    #[test]
+    fn auto_crossed_cells_do_not_count_against_satisfaction_or_win() {
+        let grid = vec![vec![true, false]];
+        let mut game = NonogramGame::from_grid(grid);
+        game.toggle_fill(0, 0);
+        assert_eq!(game.cells[game.idx(1, 0)], CellState::Crossed);
+        assert_eq!(game.status, GameStatus::Won);
+    }
+
+    #[test]
+    fn undo_reverts_auto_crossing_along_with_the_completing_move() {
+        let grid = vec![vec![true, false], vec![false, true]];
+        let mut game = NonogramGame::from_grid(grid);
+        game.toggle_fill(0, 0);
+        assert_eq!(game.cells[game.idx(1, 0)], CellState::Crossed);
+        game.undo();
+        assert_eq!(game.cells[game.idx(1, 0)], CellState::Empty);
+    }
+
+    #[test]
+    fn un_satisfying_a_line_later_leaves_its_auto_crosses_in_place() {
+        let grid = vec![vec![true, false], vec![false, true]];
+        let mut game = NonogramGame::from_grid(grid);
+        game.toggle_fill(0, 0);
+        assert_eq!(game.cells[game.idx(1, 0)], CellState::Crossed);
+        game.toggle_fill(0, 0); // un-fill the completing cell directly (not undo)
+        assert!(!game.row_satisfied(0));
+        assert_eq!(game.cells[game.idx(1, 0)], CellState::Crossed);
+    }
+
+    #[test]
+    fn empty_line_is_crossed_out_from_the_start() {
+        let grid = vec![vec![true, false], vec![false, false]];
+        let game = NonogramGame::from_grid(grid);
+        assert_eq!(game.row_clues[1], vec![0]);
+        assert_eq!(game.cells[game.idx(0, 1)], CellState::Crossed);
+        assert_eq!(game.cells[game.idx(1, 1)], CellState::Crossed);
+        // Row 0 isn't satisfied yet, so its cells are untouched.
+        assert_eq!(game.cells[game.idx(0, 0)], CellState::Empty);
+    }
+
+    #[test]
+    fn reset_reapplies_the_empty_line_crossing() {
+        let grid = vec![vec![true, false], vec![false, false]];
+        let mut game = NonogramGame::from_grid(grid);
+        game.toggle_fill(0, 0);
+        game.reset();
+        assert_eq!(game.cells[game.idx(0, 1)], CellState::Crossed);
+        assert_eq!(game.cells[game.idx(0, 0)], CellState::Empty);
+    }
+
+    #[test]
     fn wrongly_crossed_required_cell_blocks_win() {
         let grid = vec![vec![true, false]];
         let mut game = NonogramGame::from_grid(grid);
@@ -360,7 +484,7 @@ mod tests {
 
     #[test]
     fn reset_keeps_puzzle_clears_progress() {
-        let grid = vec![vec![true, false]];
+        let grid = vec![vec![true]];
         let mut game = NonogramGame::from_grid(grid);
         game.toggle_fill(0, 0);
         assert_eq!(game.status, GameStatus::Won);
