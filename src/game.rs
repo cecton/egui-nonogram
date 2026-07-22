@@ -18,7 +18,8 @@ pub enum CellState {
 pub enum GameStatus {
     /// The puzzle is not yet solved.
     Playing,
-    /// Every filled cell matches the solution.
+    /// Every row and column satisfies its clue. Nonograms can have more than
+    /// one grid that does this, so this isn't necessarily *the* solution.
     Won,
 }
 
@@ -197,9 +198,9 @@ impl NonogramGame {
         self.check_win();
     }
 
-    /// Whether row `y`'s currently-filled cells already match its clue.
-    /// This is a hint for the player (dim/strikethrough the clue), not a
-    /// win condition by itself — the whole board must match to win.
+    /// Whether row `y`'s currently-filled cells already match its clue. Used
+    /// both as a hint for the player (dim/strikethrough the clue) and,
+    /// together with [`Self::col_satisfied`], as the win condition.
     pub fn row_satisfied(&self, y: usize) -> bool {
         let line: Vec<bool> = (0..self.width)
             .map(|x| self.cells[self.idx(x, y)] == CellState::Filled)
@@ -208,6 +209,7 @@ impl NonogramGame {
     }
 
     /// Whether column `x`'s currently-filled cells already match its clue.
+    /// See [`Self::row_satisfied`].
     pub fn col_satisfied(&self, x: usize) -> bool {
         let line: Vec<bool> = (0..self.height)
             .map(|y| self.cells[self.idx(x, y)] == CellState::Filled)
@@ -240,11 +242,8 @@ impl NonogramGame {
     }
 
     fn check_win(&mut self) {
-        let won = self
-            .cells
-            .iter()
-            .zip(self.solution.iter())
-            .all(|(cell, &solution_filled)| (*cell == CellState::Filled) == solution_filled);
+        let won = (0..self.height).all(|y| self.row_satisfied(y))
+            && (0..self.width).all(|x| self.col_satisfied(x));
         self.status = if won {
             GameStatus::Won
         } else {
@@ -402,6 +401,18 @@ mod tests {
             game.col_satisfied(0),
             "column 0 should be satisfied after filling all 10 of its cells"
         );
+    }
+
+    #[test]
+    fn alternate_valid_solution_also_wins() {
+        // Diagonal solution: row clues [1],[1], col clues [1],[1] — but the
+        // anti-diagonal satisfies the exact same clues, so it's an equally
+        // valid solution and must also count as a win.
+        let grid = vec![vec![true, false], vec![false, true]];
+        let mut game = NonogramGame::from_grid(grid);
+        game.toggle_fill(1, 0);
+        game.toggle_fill(0, 1);
+        assert_eq!(game.status, GameStatus::Won);
     }
 
     #[test]
