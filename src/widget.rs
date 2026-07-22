@@ -65,6 +65,7 @@ pub struct NonogramWidget<'a> {
     tap_mode: TapMode,
     show_preview: bool,
     win_message: Option<String>,
+    interactive: bool,
 }
 
 impl<'a> NonogramWidget<'a> {
@@ -75,6 +76,7 @@ impl<'a> NonogramWidget<'a> {
             tap_mode: TapMode::Fill,
             show_preview: false,
             win_message: None,
+            interactive: true,
         }
     }
 
@@ -108,10 +110,50 @@ impl<'a> NonogramWidget<'a> {
         self.win_message = Some(message.into());
         self
     }
+
+    /// Whether the widget responds to taps/drags at all. Set to `false`
+    /// to render the board read-only — e.g. while a surrounding
+    /// container (like `egui::containers::Scene`) should own pointer
+    /// gestures instead. Unlike wrapping the widget in a disabled `Ui`,
+    /// this does not dim it: painting stays full-opacity, only the
+    /// pointer sense changes. Defaults to `true`.
+    pub fn interactive(mut self, interactive: bool) -> Self {
+        self.interactive = interactive;
+        self
+    }
 }
 
 fn clue_line_text(clue: &[u8]) -> String {
     clue.iter().map(u8::to_string).collect::<Vec<_>>().join(" ")
+}
+
+/// Row gutter width and column gutter height for a given game's clues.
+fn gutter_size(game: &NonogramGame) -> Vec2 {
+    let max_row_chars = game
+        .row_clues
+        .iter()
+        .map(|c| clue_line_text(c).chars().count())
+        .max()
+        .unwrap_or(1);
+    let max_col_lines = game.col_clues.iter().map(Vec::len).max().unwrap_or(1);
+
+    let row_gutter_width = max_row_chars as f32 * CLUE_CHAR_WIDTH + GUTTER_PADDING;
+    let col_gutter_height = max_col_lines as f32 * CLUE_LINE_HEIGHT + GUTTER_PADDING * 0.5;
+    Vec2::new(row_gutter_width, col_gutter_height)
+}
+
+/// The total footprint [`NonogramWidget`] will occupy for `game` at a given
+/// `cell_size`, including the clue gutters and (if enabled) the progress
+/// preview column. Lets a caller pre-size a container (e.g. `egui::Scene`)
+/// before laying the widget out.
+pub fn content_size(game: &NonogramGame, cell_size: f32, show_preview: bool) -> Vec2 {
+    let board_size = Vec2::new(game.width as f32, game.height as f32) * cell_size;
+    let preview_width = if show_preview {
+        PREVIEW_MAX_SIZE + PREVIEW_GAP
+    } else {
+        0.0
+    };
+    board_size + gutter_size(game) + Vec2::new(preview_width, 0.0)
 }
 
 impl Widget for NonogramWidget<'_> {
@@ -120,15 +162,9 @@ impl Widget for NonogramWidget<'_> {
         let font_id = FontId::monospace(CLUE_FONT_SIZE);
 
         let row_texts: Vec<String> = game.row_clues.iter().map(|c| clue_line_text(c)).collect();
-        let max_row_chars = row_texts
-            .iter()
-            .map(|s| s.chars().count())
-            .max()
-            .unwrap_or(1);
-        let max_col_lines = game.col_clues.iter().map(Vec::len).max().unwrap_or(1);
-
-        let row_gutter_width = max_row_chars as f32 * CLUE_CHAR_WIDTH + GUTTER_PADDING;
-        let col_gutter_height = max_col_lines as f32 * CLUE_LINE_HEIGHT + GUTTER_PADDING * 0.5;
+        let gutter_size = gutter_size(game);
+        let row_gutter_width = gutter_size.x;
+        let col_gutter_height = gutter_size.y;
         let preview_width = if self.show_preview {
             PREVIEW_MAX_SIZE + PREVIEW_GAP
         } else {
@@ -143,10 +179,14 @@ impl Widget for NonogramWidget<'_> {
         });
 
         let board_size = Vec2::new(game.width as f32, game.height as f32) * cell_size;
-        let gutter_size = Vec2::new(row_gutter_width, col_gutter_height);
         let total_size = board_size + gutter_size + Vec2::new(preview_width, 0.0);
 
-        let (response, painter) = ui.allocate_painter(total_size, Sense::click_and_drag());
+        let sense = if self.interactive {
+            Sense::click_and_drag()
+        } else {
+            Sense::hover()
+        };
+        let (response, painter) = ui.allocate_painter(total_size, sense);
         let origin = response.rect.min + gutter_size;
         let width = game.width;
         let height = game.height;

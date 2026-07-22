@@ -4,4 +4,4 @@ mod game;
 mod widget;
 
 pub use game::{CellState, Clue, GameStatus, NonogramGame};
-pub use widget::{NonogramWidget, TapMode};
+pub use widget::{content_size, NonogramWidget, TapMode};
