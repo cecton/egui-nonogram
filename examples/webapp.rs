@@ -108,10 +108,12 @@ fn run() {
                 .unwrap_or(Preset::Beginner);
             let (w, h, density) = selected_preset.dims();
 
+            let initial_seed = fastrand::u64(..);
+
             Self {
-                game: NonogramGame::random(w, h, density, 1),
+                game: NonogramGame::random(w, h, density, initial_seed),
                 selected_preset,
-                seed_counter: 1,
+                seed_counter: initial_seed,
                 mobile_mode: MobileMode::Fill,
                 scene_rect: None,
                 show_menu: false,
