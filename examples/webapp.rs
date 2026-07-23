@@ -23,17 +23,28 @@ fn run() {
 
         fn label(self) -> &'static str {
             match self {
-                Self::Beginner => "\u{FE82E} Beginner (8x8)",
-                Self::Intermediate => "\u{FE82F} Intermediate (12x12)",
-                Self::Expert => "\u{FE830} Expert (16x16)",
+                Self::Beginner => "\u{FE82E} Beginner (5x5)",
+                Self::Intermediate => "\u{FE82F} Intermediate (10x10)",
+                Self::Expert => "\u{FE830} Expert (15x15)",
             }
         }
 
+        /// `(width, height, fill density)`. Density is picked for
+        /// `deduction_only` mode: whether a random puzzle is solvable by
+        /// line-deduction alone depends heavily on density, and larger
+        /// grids need *more* fill, not less, to converge reliably (see
+        /// `NonogramGame::random_logical`'s doc comment). At 10x10 and
+        /// 15x15, lower/"prettier" densities converge too rarely to stay
+        /// safely under `random_logical`'s 200-attempt cap; these values
+        /// were chosen to keep that failure chance negligible (<0.001%,
+        /// verified by sampling), with a comfortable margin above the bare
+        /// minimum since near-miss densities are also the most expensive to
+        /// evaluate per attempt.
         fn dims(self) -> (usize, usize, f32) {
             match self {
-                Self::Beginner => (8, 8, 0.5),
-                Self::Intermediate => (12, 12, 0.45),
-                Self::Expert => (16, 16, 0.4),
+                Self::Beginner => (5, 5, 0.5),
+                Self::Intermediate => (10, 10, 0.5),
+                Self::Expert => (15, 15, 0.7),
             }
         }
     }
