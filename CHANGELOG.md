@@ -7,6 +7,13 @@ Versioning](semver).
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-07-23
+
+### Changed
+
+- `random_logical`'s attempt cap lowered from 10,000 to 200. Downstream testing surfaced `(width, height, density)` combinations with a genuinely near-zero chance of ever succeeding (e.g. a 15x15 grid at density 0.4), where 10,000 attempts meant tens of seconds of blocking work — often on a UI thread — before eventually panicking anyway. Failing fast at 200 attempts surfaces a hopeless configuration in well under a second instead.
+- `random_logical`'s doc comment now documents the empirical density-vs-grid-size relationship (bigger grids need *higher* density to stay solvable, not lower) and recommends measuring your own hit rate for grid shapes not covered by the documented table, rather than assuming convergence.
+
 ## [0.2.0] - 2026-07-23
 
 ### Added
@@ -55,7 +62,8 @@ Versioning](semver).
 
 [keep_a_changelog]: https://keepachangelog.com/en/1.1.0
 [semver]: https://semver.org/spec/v2.0.0.html
-[Unreleased]: https://github.com/cecton/egui-nonogram/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/cecton/egui-nonogram/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/cecton/egui-nonogram/releases/tag/v0.2.1
 [0.2.0]: https://github.com/cecton/egui-nonogram/releases/tag/v0.2.0
 [0.1.3]: https://github.com/cecton/egui-nonogram/releases/tag/v0.1.3
 [0.1.1]: https://github.com/cecton/egui-nonogram/releases/tag/v0.1.1
