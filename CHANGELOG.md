@@ -7,6 +7,14 @@ Versioning](semver).
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-07-23
+
+### Added
+
+- `is_logically_solvable` public function — checks if a puzzle's clues determine every cell using line-solving deduction only
+- `NonogramGame::random_logical` — generates a puzzle guaranteed solvable via single-line deduction (no guessing), using rejection sampling
+- Webapp toggle (default ON) for deduction-only generation, with preference persisted via `eframe::Storage`
+
 ## [0.1.3] - 2026-07-22
 
 ### Added
@@ -47,7 +55,8 @@ Versioning](semver).
 
 [keep_a_changelog]: https://keepachangelog.com/en/1.1.0
 [semver]: https://semver.org/spec/v2.0.0.html
-[Unreleased]: https://github.com/cecton/egui-nonogram/compare/v0.1.3...HEAD
+[Unreleased]: https://github.com/cecton/egui-nonogram/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/cecton/egui-nonogram/releases/tag/v0.2.0
 [0.1.3]: https://github.com/cecton/egui-nonogram/releases/tag/v0.1.3
 [0.1.1]: https://github.com/cecton/egui-nonogram/releases/tag/v0.1.1
 [0.1.0]: https://github.com/cecton/egui-nonogram/releases/tag/v0.1.0
