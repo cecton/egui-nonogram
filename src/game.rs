@@ -329,15 +329,54 @@ impl NonogramGame {
     /// guessing). Uses rejection sampling: generates random puzzles and
     /// keeps only those that pass the line-solvability check.
     ///
+    /// **The odds of a random puzzle being line-solvable depend heavily on
+    /// `width`, `height`, and `density`, and not in an intuitive way** —
+    /// bigger grids need *higher* density, not lower, because line-solving
+    /// relies on runs long enough to trigger overlap deduction. Some
+    /// combinations are effectively unreachable at any density: e.g. on a
+    /// square grid, a caller-supplied density much below the values found
+    /// empirically below will retry until it panics. Measured on square
+    /// grids (density is the lowest value found to reliably converge):
+    ///
+    /// | grid size | density  |
+    /// |-----------|----------|
+    /// | 10x10     | ~0.45    |
+    /// | 11x11     | ~0.40    |
+    /// | 12x12     | ~0.45    |
+    /// | 13x13     | ~0.50    |
+    /// | 14x14     | ~0.55    |
+    /// | 15x15     | ~0.60    |
+    ///
+    /// This table is empirical, not derived from a closed-form formula, and
+    /// does not extend cleanly to rectangular grids: a 20x8 grid and a 20x11
+    /// grid behave very differently even though they share a longer
+    /// dimension, so neither `width` nor `height` alone predicts difficulty.
+    /// If you're picking `density` for a grid shape not covered above,
+    /// measure your own hit rate first — generate a batch of puzzles with
+    /// [`NonogramGame::random`] at your intended size/density and check how
+    /// many pass [`is_logically_solvable`] — rather than assuming this
+    /// function will find one quickly.
+    ///
+    /// Per-attempt cost also grows with grid size, and is markedly higher
+    /// right at the solvability threshold than comfortably above it (a
+    /// near-miss puzzle takes many line-solving passes to stabilize before
+    /// giving up, where a puzzle solvable outright — or clearly hopeless —
+    /// converges fast). Pick a density with margin above the threshold, not
+    /// the bare minimum.
+    ///
     /// # Panics
     ///
-    /// Panics if no logically solvable puzzle is found within 10_000
-    /// attempts (unlikely for reasonable densities on small grids).
+    /// Panics if no logically solvable puzzle is found within 200 attempts.
+    /// That cap is intentionally small: unlike a puzzle generator that can
+    /// afford to grind for a good result, this runs synchronously wherever
+    /// it's called (e.g. on a UI thread), so a hopeless `(width, height,
+    /// density)` combination should fail fast rather than block for a long
+    /// time before eventually failing anyway.
     pub fn random_logical(width: usize, height: usize, density: f32, seed: u64) -> Self {
         assert!(width > 0 && height > 0);
         let density = density.clamp(0.05, 0.95);
         let mut rng = fastrand::Rng::with_seed(seed);
-        let max_attempts = 10_000;
+        let max_attempts = 200;
 
         for _ in 0..max_attempts {
             let solution: Vec<bool> = (0..width * height).map(|_| rng.f32() < density).collect();
