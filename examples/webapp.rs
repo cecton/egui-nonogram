@@ -61,6 +61,7 @@ fn run() {
         game: NonogramGame,
         selected_preset: Preset,
         seed_counter: u64,
+        deduction_only: bool,
         mobile_mode: MobileMode,
         scene_rect: Option<egui::Rect>,
         show_menu: bool,
@@ -87,6 +88,7 @@ fn run() {
 
         fn save(&mut self, storage: &mut dyn eframe::Storage) {
             eframe::set_value(storage, SELECTED_PRESET_KEY, &self.selected_preset);
+            eframe::set_value(storage, "deduction_only", &self.deduction_only);
         }
     }
 
@@ -97,7 +99,11 @@ fn run() {
             self.selected_preset = preset;
             let (w, h, density) = preset.dims();
             self.seed_counter += 1;
-            self.game = NonogramGame::random(w, h, density, self.seed_counter);
+            self.game = if self.deduction_only {
+                NonogramGame::random_logical(w, h, density, self.seed_counter)
+            } else {
+                NonogramGame::random(w, h, density, self.seed_counter)
+            };
             self.scene_rect = None;
         }
 
@@ -108,12 +114,23 @@ fn run() {
                 .unwrap_or(Preset::Beginner);
             let (w, h, density) = selected_preset.dims();
 
+            let deduction_only = cc
+                .storage
+                .and_then(|storage| eframe::get_value(storage, "deduction_only"))
+                .unwrap_or(true);
             let initial_seed = fastrand::u64(..);
 
+            let game = if deduction_only {
+                NonogramGame::random_logical(w, h, density, initial_seed)
+            } else {
+                NonogramGame::random(w, h, density, initial_seed)
+            };
+
             Self {
-                game: NonogramGame::random(w, h, density, initial_seed),
+                game,
                 selected_preset,
                 seed_counter: initial_seed,
+                deduction_only,
                 mobile_mode: MobileMode::Fill,
                 scene_rect: None,
                 show_menu: false,
@@ -155,6 +172,15 @@ fn run() {
                             {
                                 self.new_game(preset);
                             }
+                        }
+                        ui.separator();
+                        if ui
+                            .selectable_label(self.deduction_only, "\u{1F524} Logical")
+                            .clicked()
+                        {
+                            self.deduction_only = !self.deduction_only;
+                            let preset = self.selected_preset;
+                            self.new_game(preset);
                         }
                         ui.separator();
                         if ui
@@ -410,6 +436,20 @@ fn run() {
                             self.new_game(preset);
                             self.show_menu = false;
                         }
+                    }
+                    ui.separator();
+                    ui.label(egui::RichText::new("Generation").size(menu_font_size));
+                    if ui
+                        .selectable_label(
+                            self.deduction_only,
+                            egui::RichText::new("\u{1F524} Logical Only").size(menu_font_size),
+                        )
+                        .clicked()
+                    {
+                        self.deduction_only = !self.deduction_only;
+                        let preset = self.selected_preset;
+                        self.new_game(preset);
+                        self.show_menu = false;
                     }
                     ui.separator();
                     ui.label(egui::RichText::new("Theme").size(menu_font_size));
