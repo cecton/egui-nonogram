@@ -56,6 +56,10 @@ pub struct NonogramGame {
     pub status: GameStatus,
     undo_stack: Vec<Vec<CellState>>,
     redo_stack: Vec<Vec<CellState>>,
+    /// Set between [`Self::begin_gesture`] and [`Self::end_gesture`] so a
+    /// whole click-and-drag gesture collapses into a single undo step
+    /// instead of one per cell it touches.
+    in_gesture: bool,
 }
 
 impl NonogramGame {
@@ -123,6 +127,7 @@ impl NonogramGame {
             status: GameStatus::Playing,
             undo_stack: Vec::new(),
             redo_stack: Vec::new(),
+            in_gesture: false,
         };
         game.cross_out_empty_lines();
         game
@@ -136,6 +141,7 @@ impl NonogramGame {
         self.status = GameStatus::Playing;
         self.undo_stack.clear();
         self.redo_stack.clear();
+        self.in_gesture = false;
         self.cross_out_empty_lines();
     }
 
@@ -190,13 +196,37 @@ impl NonogramGame {
         self.set_cell(x, y, CellState::Crossed);
     }
 
+    /// Directly set a cell to an arbitrary state, no toggling. Used by the
+    /// widget to restore a cell to its pre-gesture value when a
+    /// click-and-drag line retracts past it.
+    pub(crate) fn set_cell_state(&mut self, x: usize, y: usize, state: CellState) {
+        self.set_cell(x, y, state);
+    }
+
+    /// Start a click-and-drag gesture: snapshot the current grid once for
+    /// undo, then suppress further undo snapshots until [`Self::end_gesture`],
+    /// so the whole gesture (however many cells it paints, retracts, and
+    /// repaints) collapses into a single undo step.
+    pub(crate) fn begin_gesture(&mut self) {
+        self.undo_stack.push(self.cells.clone());
+        self.redo_stack.clear();
+        self.in_gesture = true;
+    }
+
+    /// End the current gesture, resuming normal per-mutation undo snapshots.
+    pub(crate) fn end_gesture(&mut self) {
+        self.in_gesture = false;
+    }
+
     fn set_cell(&mut self, x: usize, y: usize, new_state: CellState) {
         let idx = self.idx(x, y);
         if self.cells[idx] == new_state {
             return;
         }
-        self.undo_stack.push(self.cells.clone());
-        self.redo_stack.clear();
+        if !self.in_gesture {
+            self.undo_stack.push(self.cells.clone());
+            self.redo_stack.clear();
+        }
         self.cells[idx] = new_state;
         self.auto_cross_completed_lines(x, y);
         self.check_win();
@@ -699,6 +729,54 @@ mod tests {
         assert!(game.can_redo());
         game.redo();
         assert_eq!(game.status, GameStatus::Won);
+    }
+
+    #[test]
+    fn gesture_collapses_multiple_mutations_into_one_undo_step() {
+        let grid = vec![vec![true, true, true]];
+        let mut game = NonogramGame::from_grid(grid);
+        game.begin_gesture();
+        game.fill(0, 0);
+        game.fill(1, 0);
+        game.fill(2, 0);
+        game.end_gesture();
+        assert_eq!(game.status, GameStatus::Won);
+        game.undo();
+        assert_eq!(game.cells, vec![CellState::Empty; 3]);
+        assert!(!game.can_undo());
+    }
+
+    #[test]
+    fn gesture_retract_via_set_cell_state_does_not_add_undo_steps() {
+        let grid = vec![vec![true, true, true]];
+        let mut game = NonogramGame::from_grid(grid);
+        game.begin_gesture();
+        game.fill(0, 0);
+        game.fill(1, 0);
+        game.fill(2, 0);
+        // Retract: put the last two cells back to what they were before
+        // the gesture touched them (plain `Empty` here).
+        game.set_cell_state(1, 0, CellState::Empty);
+        game.set_cell_state(2, 0, CellState::Empty);
+        game.end_gesture();
+        assert_eq!(game.cells[game.idx(0, 0)], CellState::Filled);
+        assert_eq!(game.cells[game.idx(1, 0)], CellState::Empty);
+        game.undo();
+        assert_eq!(game.cells, vec![CellState::Empty; 3]);
+        assert!(!game.can_undo());
+    }
+
+    #[test]
+    fn plain_mutations_outside_a_gesture_still_get_their_own_undo_step() {
+        let grid = vec![vec![true, true]];
+        let mut game = NonogramGame::from_grid(grid);
+        game.toggle_fill(0, 0);
+        game.toggle_fill(1, 0);
+        assert_eq!(game.status, GameStatus::Won);
+        game.undo();
+        assert_eq!(game.status, GameStatus::Playing);
+        assert_eq!(game.cells[1], CellState::Empty);
+        assert_eq!(game.cells[0], CellState::Filled);
     }
 
     #[test]

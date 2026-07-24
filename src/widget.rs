@@ -41,6 +41,38 @@ impl PaintTarget {
     }
 }
 
+/// The single row or column a click-and-drag gesture is locked to, once the
+/// pointer has moved off the origin cell.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Axis {
+    Row,
+    Col,
+}
+
+/// Tracks one click-and-drag gesture across frames: the paint target it
+/// decided on, and enough to paint (and un-paint, on retract) a single
+/// row/column line from the origin cell to the pointer's current cell.
+/// Stored in egui's per-widget temporary memory so it survives across the
+/// frames of one drag.
+#[derive(Clone, Debug)]
+struct DragState {
+    target: PaintTarget,
+    origin: (usize, usize),
+    /// The origin cell's state right before this gesture painted it —
+    /// captured because `axis` isn't known yet at gesture-start, so it
+    /// can't go straight into `original` below.
+    origin_original: CellState,
+    /// `None` until the pointer moves off the origin cell.
+    axis: Option<Axis>,
+    /// Indexed by the free coordinate along the locked axis (x for `Row`,
+    /// y for `Col`). Lazily filled the first time each cell is touched,
+    /// holding what that cell looked like before this gesture painted it.
+    original: Vec<Option<CellState>>,
+    /// Current painted range `[min, max]` of the free coordinate — the line
+    /// currently drawn from `origin` to the last-seen pointer cell.
+    span: (usize, usize),
+}
+
 const CLUE_FONT_SIZE: f32 = 14.0;
 const CLUE_CHAR_WIDTH: f32 = CLUE_FONT_SIZE * 0.6; // monospace approximation
 const CLUE_LINE_HEIGHT: f32 = CLUE_FONT_SIZE * 1.3;
@@ -205,11 +237,16 @@ impl Widget for NonogramWidget<'_> {
 
         // ── Input handling ──────────────────────────────────────────────
         // A gesture (plain click or the start of a drag) decides its paint
-        // target from the cell it started on, stores that decision in
-        // egui's per-widget temp memory, and re-applies it (idempotently)
-        // to every cell touched for the rest of the gesture — so dragging
-        // back over an already-painted cell doesn't undo it.
-        let paint_id = response.id.with("paint_target");
+        // target from the cell it started on. A drag then locks to whichever
+        // single row or column the pointer first moves along (nonogram
+        // players always work one line at a time, never diagonally), and
+        // behaves like drawing a line from the origin cell to the pointer's
+        // current cell: extending the line paints new cells, retracting it
+        // restores cells to whatever they were before this gesture touched
+        // them. The whole gesture — however many cells it paints, retracts,
+        // and repaints — is wrapped in `begin_gesture`/`end_gesture` so it
+        // collapses into a single undo step.
+        let drag_id = response.id.with("drag_state");
         let gesture_start = response.clicked()
             || response.secondary_clicked()
             || response.drag_started_by(PointerButton::Primary)
@@ -217,6 +254,8 @@ impl Widget for NonogramWidget<'_> {
         if gesture_start {
             if let Some((cx, cy)) = response.interact_pointer_pos().and_then(cell_at) {
                 let secondary = response.secondary_clicked()
+                    || response.drag_started_by(PointerButton::Secondary);
+                let is_drag_start = response.drag_started_by(PointerButton::Primary)
                     || response.drag_started_by(PointerButton::Secondary);
                 let current = game.cells[game.idx(cx, cy)];
                 let target = if secondary {
@@ -233,16 +272,89 @@ impl Widget for NonogramWidget<'_> {
                         TapMode::Cross => PaintTarget::Cross,
                     }
                 };
-                ui.ctx().data_mut(|d| d.insert_temp(paint_id, target));
+                game.begin_gesture();
+                ui.ctx().data_mut(|d| {
+                    d.insert_temp(
+                        drag_id,
+                        DragState {
+                            target,
+                            origin: (cx, cy),
+                            origin_original: current,
+                            axis: None,
+                            original: Vec::new(),
+                            span: (0, 0),
+                        },
+                    )
+                });
                 target.apply(game, cx, cy);
+                if !is_drag_start {
+                    game.end_gesture();
+                }
             }
         } else if response.dragged() {
             if let Some((cx, cy)) = response.interact_pointer_pos().and_then(cell_at) {
-                let target = ui.ctx().data(|d| d.get_temp::<PaintTarget>(paint_id));
-                if let Some(target) = target {
-                    target.apply(game, cx, cy);
+                let state = ui.ctx().data(|d| d.get_temp::<DragState>(drag_id));
+                if let Some(mut state) = state {
+                    let (ox, oy) = state.origin;
+                    if state.axis.is_none() && (cx, cy) != (ox, oy) {
+                        let dx = (cx as isize - ox as isize).abs();
+                        let dy = (cy as isize - oy as isize).abs();
+                        let axis = if dx >= dy { Axis::Row } else { Axis::Col };
+                        let len = match axis {
+                            Axis::Row => width,
+                            Axis::Col => height,
+                        };
+                        let origin_free = match axis {
+                            Axis::Row => ox,
+                            Axis::Col => oy,
+                        };
+                        let mut original = vec![None; len];
+                        original[origin_free] = Some(state.origin_original);
+                        state.axis = Some(axis);
+                        state.original = original;
+                        state.span = (origin_free, origin_free);
+                    }
+                    if let Some(axis) = state.axis {
+                        let origin_free = match axis {
+                            Axis::Row => ox,
+                            Axis::Col => oy,
+                        };
+                        let new_free = match axis {
+                            Axis::Row => cx,
+                            Axis::Col => cy,
+                        };
+                        let fixed = match axis {
+                            Axis::Row => oy,
+                            Axis::Col => ox,
+                        };
+                        let cell_for = |f: usize| match axis {
+                            Axis::Row => (f, fixed),
+                            Axis::Col => (fixed, f),
+                        };
+                        let new_span = (origin_free.min(new_free), origin_free.max(new_free));
+                        for f in new_span.0..=new_span.1 {
+                            let (x, y) = cell_for(f);
+                            if state.original[f].is_none() {
+                                state.original[f] = Some(game.cells[game.idx(x, y)]);
+                            }
+                            state.target.apply(game, x, y);
+                        }
+                        for f in state.span.0..=state.span.1 {
+                            if f < new_span.0 || f > new_span.1 {
+                                let (x, y) = cell_for(f);
+                                if let Some(orig) = state.original[f] {
+                                    game.set_cell_state(x, y, orig);
+                                }
+                            }
+                        }
+                        state.span = new_span;
+                    }
+                    ui.ctx().data_mut(|d| d.insert_temp(drag_id, state));
                 }
             }
+        }
+        if response.drag_stopped() {
+            game.end_gesture();
         }
 
         // ── Painting ─────────────────────────────────────────────────────
