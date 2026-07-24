@@ -320,6 +320,10 @@ impl Widget for NonogramWidget<'_> {
             }
         }
 
+        // Major gridlines: painted on top of the cells so they read
+        // clearly regardless of Empty/Filled/Crossed state underneath.
+        draw_major_gridlines(&painter, origin, board_size, width, height, cell_size, normal_color);
+
         // Progress preview: a compact, read-only thumbnail of the filled
         // cells only, to the right of the board.
         if self.show_preview {
@@ -416,4 +420,48 @@ fn draw_cell(painter: &egui::Painter, rect: Rect, state: CellState, visuals: &Vi
         Stroke::new(0.5, visuals.widgets.noninteractive.bg_stroke.color),
         StrokeKind::Inside,
     );
+}
+
+// Bold guide lines every 5th internal cell boundary — the standard
+// nonogram/sudoku convention for helping players count large grids.
+// Only internal boundaries are drawn (the board's outer edge keeps its
+// plain per-cell border from `draw_cell`); a board with 5 or fewer
+// rows/columns in a dimension naturally gets none, with no special-casing.
+fn draw_major_gridlines(
+    painter: &egui::Painter,
+    origin: Pos2,
+    board_size: Vec2,
+    width: usize,
+    height: usize,
+    cell_size: f32,
+    color: Color32,
+) {
+    let ppi = painter.ctx().pixels_per_point();
+    let stroke = Stroke::new(1.5, color);
+
+    let mut n = 5;
+    while n < width {
+        let x = origin.x + n as f32 * cell_size;
+        painter.line_segment(
+            [
+                Pos2::new(x, origin.y).round_to_pixels(ppi),
+                Pos2::new(x, origin.y + board_size.y).round_to_pixels(ppi),
+            ],
+            stroke,
+        );
+        n += 5;
+    }
+
+    let mut n = 5;
+    while n < height {
+        let y = origin.y + n as f32 * cell_size;
+        painter.line_segment(
+            [
+                Pos2::new(origin.x, y).round_to_pixels(ppi),
+                Pos2::new(origin.x + board_size.x, y).round_to_pixels(ppi),
+            ],
+            stroke,
+        );
+        n += 5;
+    }
 }
