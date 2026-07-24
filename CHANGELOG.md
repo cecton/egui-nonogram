@@ -7,6 +7,17 @@ Versioning](semver).
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-07-24
+
+### Fixed
+
+- Click-and-drag painting no longer paints diagonally: a drag now locks to a single row or column as soon as the pointer moves off the starting cell (whichever direction the initial movement is larger in), matching how nonogram players actually solve — one line at a time.
+
+### Changed
+
+- Dragging back over already-painted cells now restores them to what they were before the gesture touched them, instead of leaving them painted — extending the drag re-paints, so the whole gesture behaves like drawing a retractable line. This also fixes fast drags skipping cells: the whole line from the origin to the pointer is repainted every frame instead of just the cell the pointer landed on.
+- A whole click-and-drag gesture (however many cells it paints, retracts, and repaints) now undoes/redoes as a single step, instead of one undo entry per cell mutated.
+
 ## [0.3.0] - 2026-07-24
 
 ### Added
@@ -68,7 +79,8 @@ Versioning](semver).
 
 [keep_a_changelog]: https://keepachangelog.com/en/1.1.0
 [semver]: https://semver.org/spec/v2.0.0.html
-[Unreleased]: https://github.com/cecton/egui-nonogram/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/cecton/egui-nonogram/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/cecton/egui-nonogram/releases/tag/v0.3.1
 [0.3.0]: https://github.com/cecton/egui-nonogram/releases/tag/v0.3.0
 [0.2.1]: https://github.com/cecton/egui-nonogram/releases/tag/v0.2.1
 [0.2.0]: https://github.com/cecton/egui-nonogram/releases/tag/v0.2.0
